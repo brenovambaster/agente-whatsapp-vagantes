@@ -1,0 +1,15 @@
+# Evolution API v2 (WhatsApp não oficial, via Baileys) — sem Postgres/Redis, para uso local
+services:
+  evolution:
+    image: atendai/evolution-api:v2.2.3
+    ports:
+      - "8080:8080"
+    environment:
+      AUTHENTICATION_API_KEY: troque-esta-chave
+      DATABASE_ENABLED: "false"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+    volumes:
+      - evolution_instances:/evolution/instances
+volumes:
+  evolution_instances:

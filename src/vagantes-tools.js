@@ -94,6 +94,15 @@ export async function inscreverPassageiro({ cpf, eventoId, poltrona, localEmbarq
   return resultado;
 }
 
+export const inscreverSchema = {
+  cpf: z.string().regex(/^\d{11}$/),
+  eventoId: z.string().uuid(),
+  poltrona: z.number().int().positive().optional(),
+  localEmbarque: z.string().max(255).optional().describe("Ponto de embarque deste passageiro, só se informado no texto"),
+  responsavelNome: z.string().min(3).optional().describe("Nome de quem reservou por este passageiro; vira 'Responsável: <nome>'"),
+  observacaoPagamento: z.string().max(500).optional().describe("Nota livre na observação do pagamento, ex.: 'pago total, 2 vagas'"),
+};
+
 export const vagantesServer = createSdkMcpServer({
   name: "vagantes",
   version: "1.2.0",
@@ -142,14 +151,7 @@ export const vagantesServer = createSdkMcpServer({
       "inscrever_passageiro",
       "Pipeline completo de UM passageiro já cadastrado: cria a inscrição pelo CPF já com status CONFIRMADO, grava o local de embarque " +
         "(se informado) e acrescenta notas na observação do pagamento gerado. Chame uma vez por passageiro.",
-      {
-        cpf: z.string().regex(/^d{11}$/),
-        eventoId: z.string().uuid(),
-        poltrona: z.number().int().positive().optional(),
-        localEmbarque: z.string().max(255).optional().describe("Ponto de embarque deste passageiro, só se informado no texto"),
-        responsavelNome: z.string().min(3).optional().describe("Nome de quem reservou por este passageiro; vira 'Responsável: <nome>'"),
-        observacaoPagamento: z.string().max(500).optional().describe("Nota livre na observação do pagamento, ex.: 'pago total, 2 vagas'"),
-      },
+      inscreverSchema,
       async (args) => out(await inscreverPassageiro(args)),
     ),
     tool(

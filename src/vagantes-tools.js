@@ -1,5 +1,6 @@
 // Ferramentas que o agente pode usar. O token fica aqui, fora do contexto do modelo.
 // Contratos conferidos no backend (InscricaoController, PagamentoController e DTOs).
+import { randomInt } from "node:crypto";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 
@@ -96,6 +97,67 @@ export async function inscreverPassageiro({ cpf, eventoId, poltrona, localEmbarq
   return resultado;
 }
 
+// Regras do README-agente-cadastro-usuarios.md aplicadas no código, para não depender do modelo.
+const NAO_INFORMADO = "Não informado";
+const TELEFONE_PADRAO = "00000000000";
+const NASCIMENTO_PADRAO = "2010-10-10";
+const PARTICULAS = new Set(["da", "de", "do", "das", "dos", "e"]);
+
+const digitos = (v) => (v || "").replace(/\D/g, "");
+const texto = (v) => v?.trim() || NAO_INFORMADO;
+
+const titleCase = (nome) =>
+  nome.trim().toLowerCase().split(/\s+/)
+    .map((p, i) => (i > 0 && PARTICULAS.has(p) ? p : p.charAt(0).toUpperCase() + p.slice(1)))
+    .join(" ");
+
+// Aceita DD/MM/AAAA, D/M/AAAA, DD-MM-AAAA, DD.MM.AAAA e AAAA-MM-DD.
+function dataIso(v) {
+  if (!v?.trim()) return NASCIMENTO_PADRAO;
+  let m = v.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const [a, mes, d] = m ? [m[1], m[2], m[3]] : (m = v.trim().match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/)) ? [m[3], m[2], m[1]] : [];
+  if (!a) return null;
+  const iso = `${a}-${mes.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  return new Date(`${iso}T00:00:00Z`).toISOString().startsWith(iso) ? iso : null;
+}
+
+const telefone = (v) => digitos(v) || TELEFONE_PADRAO;
+
+// A senha não volta para o modelo. Só usa os especiais que a regex do backend aceita (sem "!").
+function gerarSenha() {
+  const grupos = ["abcdefghijkmnpqrstuvwxyz", "ABCDEFGHJKLMNPQRSTUVWXYZ", "23456789", "@#$%^&+="];
+  const todos = grupos.join("");
+  const chars = [...grupos, ...Array(8).fill(todos)].map((g) => g[randomInt(g.length)]);
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = randomInt(i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join("");
+}
+
+export function normalizarUsuario(d) {
+  const user = {
+    nomeCompleto: titleCase(d.nomeCompleto || ""),
+    email: null, // regra do operador: sempre null, mesmo quando informado
+    senha: gerarSenha(),
+    telefone: telefone(d.telefone),
+    dataNascimento: dataIso(d.dataNascimento),
+    cpf: digitos(d.cpf),
+    contatoEmergenciaNome: texto(d.contatoEmergenciaNome),
+    contatoEmergenciaParentesco: texto(d.contatoEmergenciaParentesco),
+    contatoEmergenciaTelefone: telefone(d.contatoEmergenciaTelefone),
+    condicoesMedicas: texto(d.condicoesMedicas),
+  };
+  const erros = [
+    (user.nomeCompleto.length < 3 || user.nomeCompleto.length > 100) && "nomeCompleto deve ter entre 3 e 100 caracteres",
+    user.cpf.length !== 11 && "cpf deve ter 11 dígitos",
+    !/^\d{10,11}$/.test(user.telefone) && "telefone deve ter 10 ou 11 dígitos",
+    !/^\d{10,11}$/.test(user.contatoEmergenciaTelefone) && "contatoEmergenciaTelefone deve ter 10 ou 11 dígitos",
+    !user.dataNascimento && `dataNascimento inválida: ${d.dataNascimento}`,
+  ].filter(Boolean);
+  return erros.length ? { erro: erros } : user;
+}
+
 export const inscreverSchema = {
   cpf: z.string().regex(/^\d{11}$/),
   eventoId: z.string().uuid(),
@@ -117,20 +179,23 @@ export const vagantesServer = createSdkMcpServer({
     ),
     tool(
       "cadastrar_usuario",
-      "Cria um usuário (POST /user). Envie dados já normalizados e validados conforme as regras.",
+      "Cria um usuário (POST /user). Mande os dados como vieram; a ferramenta normaliza, aplica os padrões e gera a senha.",
       {
-        nomeCompleto: z.string().min(3).max(100),
-        email: z.string().email().nullable(),
-        senha: z.string().min(8).max(100),
-        telefone: z.string().regex(/^\d{10,11}$/),
-        dataNascimento: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        cpf: z.string().regex(/^\d{11}$/),
-        contatoEmergenciaNome: z.string().min(1),
-        contatoEmergenciaParentesco: z.string().min(1),
-        contatoEmergenciaTelefone: z.string().regex(/^\d{10,11}$/),
-        condicoesMedicas: z.string(),
+        nomeCompleto: z.string(),
+        cpf: z.string(),
+        telefone: z.string().optional(),
+        dataNascimento: z.string().optional().describe("Como veio no texto, ex.: 15/05/1990"),
+        contatoEmergenciaNome: z.string().optional().describe("Só o primeiro contato informado"),
+        contatoEmergenciaParentesco: z.string().optional(),
+        contatoEmergenciaTelefone: z.string().optional(),
+        condicoesMedicas: z.string().optional(),
       },
-      async (user) => out(await api("POST", "/user", user)),
+      async (dados) => {
+        const user = normalizarUsuario(dados);
+        if (user.erro) return out({ etapa: "validacao", erro: user.erro });
+        const r = await api("POST", "/user", user);
+        return out(r.ok ? { ok: true, status: r.status, id: r.data.id, nomeCompleto: r.data.nomeCompleto } : r);
+      },
     ),
     tool(
       "listar_roteiros",

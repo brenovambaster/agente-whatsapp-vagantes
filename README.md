@@ -7,7 +7,7 @@ WhatsApp ──► Evolution API ──webhook──► server.js ──► Clau
 ```
 
 - `src/server.js`: recebe o `messages.upsert`, filtra (sem grupos, sem `fromMe`, só `ALLOWED_NUMBERS`), uma fila por contato, responde via `sendText`.
-- `src/agent.js`: o agente especialista. Usa `../README-agente-cadastro-usuarios.md` como manual e mantém uma sessão por contato (`/reset` reinicia).
+- `src/agent.js`: o agente especialista. Usa `README-agente-cadastro-usuarios.md` como manual e mantém uma sessão por contato (`/reset` reinicia).
 - `src/vagantes-tools.js`: as únicas ferramentas do agente. O token fica aqui; o modelo nunca o vê, e o agente não tem Bash, arquivos nem web.
 
 ## Pipeline (cadastro → inscrição → pagamento)
@@ -24,6 +24,7 @@ WhatsApp ──► Evolution API ──webhook──► server.js ──► Clau
 - **Valor pago:** o pagamento de X (ou de quem reserva só para si) recebe nota como `pago total, 2 vagas`.
 - **Responsável:** se X reserva para A e B, os pagamentos de A e B recebem `Responsável: X` na observação. A observação que já existia é mantida, e a nota não se repete.
 - **Ponto de embarque:** grava `localEmbarque` na inscrição só quando aparece no texto.
+- **Cadastro:** `cadastrar_usuario` normaliza os dados no código (só dígitos em CPF e telefones, data em `AAAA-MM-DD`, nome em title case), preenche os padrões (`Não informado`, `00000000000`, nascimento `2010-10-10`), grava email sempre `null` e gera a senha. A senha não volta para o modelo nem vai para o WhatsApp.
 - **Observação do pagamento:** o `informarPagamento` do backend sobrescreve `metodo`, `comprovanteUrl`, `codigoTransacao` e `observacao`. Por isso a ferramenta lê o pagamento atual e reenvia esses campos. O status do pagamento não é alterado.
 
 Exemplo de mensagem:

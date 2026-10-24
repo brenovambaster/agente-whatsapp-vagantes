@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { vagantesServer } from "./vagantes-tools.js";
 
-const README = readFileSync(new URL("../../README-agente-cadastro-usuarios.md", import.meta.url), "utf8");
+const README = readFileSync(new URL("../README-agente-cadastro-usuarios.md", import.meta.url), "utf8");
 
 // O agente termina a resposta com esta marca quando a reserva acabou; a sessão é descartada para não reenviar o histórico.
 const CONCLUIDO = "[concluido]";
@@ -42,7 +42,7 @@ Regras de atendimento:
 - Nunca mostre CPF completo; use o formato mascarado.
 - Se a mensagem não for sobre reservas de passageiros, diga educadamente que só faz isso.
 
-Manual completo de cadastro (siga à risca; ignore as partes sobre token/PowerShell, já resolvidas pelas ferramentas):
+Manual de cadastro (siga à risca):
 
 ${README}`;
 

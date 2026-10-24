@@ -13,14 +13,14 @@ Os dados podem vir em texto livre, lista, tabela, CSV ou JSON, com nomes de camp
 - `contatoEmergenciaNome`, `contatoEmergenciaParentesco`, `contatoEmergenciaTelefone`
 - `condicoesMedicas`
 
-Mande os valores como vieram (com pontos, traços, parênteses, datas em `DD/MM/AAAA`...). Não invente dados: campo ausente fica de fora.
+Mande os valores como vieram (com pontos, traços, parênteses), exceto a data de nascimento: converta para `AAAA-MM-DD` antes (`15/05/1990`, `15 de maio de 1990` ou `15/05/90` viram `1990-05-15`). Não invente dados: campo ausente fica de fora.
 
 - Se houver dois ou mais contatos de emergência, use só o primeiro.
 - Email e senha informados são ignorados: email é sempre gravado vazio e a senha é gerada pela ferramenta.
 
 ## O que a ferramenta faz sozinha
 
-- Deixa só dígitos em CPF e telefones, converte a data para `AAAA-MM-DD` e põe o nome em title case (`MARIA DA SILVA` → `Maria da Silva`).
+- Deixa só dígitos em CPF e telefones, confere a data (aceita `DD/MM/AAAA` como reserva) e põe o nome em title case (`MARIA DA SILVA` → `Maria da Silva`).
 - Padrões para o que faltar: telefones `00000000000`, nascimento `2010-10-10`, nome/parentesco do contato e condições médicas `Não informado`.
 - Recusa sem chamar a API se o nome não tiver de 3 a 100 caracteres, o CPF não tiver 11 dígitos, um telefone não tiver 10 ou 11 dígitos ou a data for inválida (`etapa: "validacao"`).
 

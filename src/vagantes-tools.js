@@ -184,7 +184,7 @@ export const vagantesServer = createSdkMcpServer({
         nomeCompleto: z.string(),
         cpf: z.string(),
         telefone: z.string().optional(),
-        dataNascimento: z.string().optional().describe("Como veio no texto, ex.: 15/05/1990"),
+        dataNascimento: z.string().optional().describe("AAAA-MM-DD. Converta antes, inclusive datas por extenso e ano com 2 dígitos"),
         contatoEmergenciaNome: z.string().optional().describe("Só o primeiro contato informado"),
         contatoEmergenciaParentesco: z.string().optional(),
         contatoEmergenciaTelefone: z.string().optional(),

@@ -5,17 +5,16 @@ import { vagantesServer } from "./vagantes-tools.js";
 
 const README = readFileSync(new URL("../../README-agente-cadastro-usuarios.md", import.meta.url), "utf8");
 
-// Resposta que o agente usa enquanto espera o fechamento do grupo; o server.js não a envia.
-export const SILENCIO = "[aguardando]";
+// O agente termina a resposta com esta marca quando a reserva acabou; a sessão é descartada para não reenviar o histórico.
+const CONCLUIDO = "[concluido]";
 
 const SYSTEM_PROMPT = `Você é o assistente de reservas do Vagantes, atendendo operadores pelo WhatsApp (conversa privada ou grupo).
 Seu trabalho é o pipeline completo: cadastro do passageiro → inscrição no roteiro (já CONFIRMADA) → anotações no pagamento gerado.
 
 Quando agir:
-- Uma reserva pode chegar em várias mensagens (fichas dos passageiros, roteiro, forma de pagamento, comprovante...). Ela só termina quando chegar "/fim" ou o emoji 🍃.
-- Antes disso NÃO cadastre nem inscreva ninguém. Você pode consultar (buscar_usuario_por_cpf, listar_roteiros).
-- Enquanto espera, se a mensagem não traz dúvida nem pendência para perguntar, responda exatamente ${SILENCIO} e nada mais (essa resposta não é enviada).
-- Ao receber /fim ou 🍃: reúna todas as mensagens da reserva desde o fechamento anterior. Se faltar dado obrigatório ou algo estiver ambíguo, pergunte e espere a resposta. Se estiver tudo certo, execute o pipeline e responda com o resumo.
+- O operador manda a reserva em várias mensagens (fichas dos passageiros, roteiro, forma de pagamento, comprovante...) e fecha com "/fim" ou 🍃. Você recebe todas juntas, já fechadas.
+- Se faltar dado obrigatório ou algo estiver ambíguo, pergunte e espere a resposta. Se estiver tudo certo, execute o pipeline e responda com o resumo.
+- Quando não houver mais nada pendente (pipeline executado, ou a mensagem não era sobre reservas), termine a resposta com ${CONCLUIDO}. Não use essa marca se você fez uma pergunta.
 
 Pipeline, para cada passageiro da reserva:
 1. buscar_usuario_por_cpf. Se não existir, cadastrar_usuario (regras do manual abaixo).
@@ -55,6 +54,9 @@ async function* asStream(text) {
   yield { type: "user", message: { role: "user", content: text } };
 }
 
+// true enquanto o agente espera resposta a uma pergunta sobre a reserva atual.
+export const emAndamento = (contact) => sessions.has(contact);
+
 export async function askAgent(contact, text) {
   let reply = "";
   for await (const msg of query({
@@ -70,6 +72,12 @@ export async function askAgent(contact, text) {
         "mcp__vagantes__atualizar_inscricao",
       ],
       tools: [], // sem Bash/arquivos/web: o agente só enxerga as ferramentas acima
+      // Não carrega CLAUDE.md, settings, MCPs, plugins nem skills da máquina: tudo isso iria no contexto de cada chamada.
+      settingSources: [],
+      strictMcpConfig: true,
+      skills: [],
+      model: process.env.CLAUDE_MODEL || undefined,
+      effort: process.env.CLAUDE_EFFORT || undefined,
       resume: sessions.get(contact),
       maxTurns: 40,
     },
@@ -77,7 +85,12 @@ export async function askAgent(contact, text) {
     if (msg.type === "result") {
       sessions.set(contact, msg.session_id);
       reply = msg.subtype === "success" ? msg.result : "Não consegui concluir agora. Tente de novo em instantes.";
+      console.log(`[${contact}] tokens: entrada ${msg.usage?.input_tokens} + cache ${msg.usage?.cache_read_input_tokens}/${msg.usage?.cache_creation_input_tokens}, saída ${msg.usage?.output_tokens}, US$ ${msg.total_cost_usd?.toFixed(4)}`);
     }
+  }
+  if (reply.includes(CONCLUIDO)) {
+    sessions.delete(contact);
+    reply = reply.replaceAll(CONCLUIDO, "").trim();
   }
   return reply;
 }

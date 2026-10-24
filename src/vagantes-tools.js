@@ -43,7 +43,9 @@ async function api(method, path, body, retry = true) {
   return { ok: res.ok, status: res.status, data };
 }
 
-const out = (obj) => ({ content: [{ type: "text", text: JSON.stringify(obj) }] });
+// Campos nulos/vazios só gastam tokens no contexto do modelo.
+const vazio = (v) => v === null || v === "" || (Array.isArray(v) && !v.length);
+const out = (obj) => ({ content: [{ type: "text", text: JSON.stringify(obj, (_k, v) => (vazio(v) ? undefined : v)) }] });
 
 // O backend sobrescreve todos os campos do pagamento em "informar"; reenviamos os atuais e só acrescentamos notas.
 export async function anotarPagamento(inscricaoId, notas) {

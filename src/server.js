@@ -1,7 +1,7 @@
 // Recebe o webhook da Evolution API, envia o texto ao agente e responde no WhatsApp.
 import { timingSafeEqual } from "node:crypto";
 import express from "express";
-import { askAgent, resetSession, SILENCIO } from "./agent.js";
+import { askAgent, emAndamento, resetSession } from "./agent.js";
 
 const { EVOLUTION_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE, WEBHOOK_SECRET, HOST = "127.0.0.1", PORT = 3000 } = process.env;
 const list = (v) => new Set((v || "").split(",").map((s) => s.replace(/[^\dA-Za-z@.\-]/g, "")).filter(Boolean));
@@ -15,6 +15,10 @@ async function sendText(to, text) {
     body: JSON.stringify({ number: to, text }),
   });
   if (!res.ok) console.error("sendText falhou", res.status, await res.text());
+}
+
+async function reply(to, text) {
+  if (text) await sendText(to, text);
 }
 
 function extractText(message = {}) {
@@ -41,6 +45,11 @@ function enqueue(key, job) {
   queues.set(key, next);
 }
 
+// Mensagens da reserva ainda aberta. O modelo só é chamado quando chega /fim ou 🍃,
+// em vez de uma chamada (com todo o histórico) por mensagem.
+const FIM = /^\/fim\b|🍃/iu;
+const reservas = new Map();
+
 const app = express();
 app.use(express.json({ limit: "5mb" }));
 
@@ -66,10 +75,16 @@ app.post(["/webhook", "/webhook/:secret"], (req, res) => {
   enqueue(conversa, async () => {
     if (text.toLowerCase() === "/reset") {
       resetSession(conversa);
+      reservas.delete(conversa);
       return sendText(chat, "Conversa reiniciada.");
     }
-    const reply = await askAgent(conversa, text);
-    if (reply && !reply.includes(SILENCIO)) await sendText(chat, reply);
+    // Resposta a uma pergunta do agente: vai direto, sem esperar /fim.
+    if (emAndamento(conversa)) return reply(chat, await askAgent(conversa, text));
+
+    const msgs = [...(reservas.get(conversa) || []), text];
+    if (!FIM.test(text)) return reservas.set(conversa, msgs);
+    reservas.delete(conversa);
+    await reply(chat, await askAgent(conversa, msgs.join("\n\n---\n\n")));
   });
 });
 
